@@ -115,8 +115,8 @@ if st.button("🔮 Predict House Price", use_container_width=True):
     }
 
     # FastAPI URL
-    api_url = "http://127.0.0.1:8000/predict"
-
+    api_url = "https://house-price-ml-project-h58v.onrender.com/predict"
+    
     try:
 
         # Send request to FastAPI
