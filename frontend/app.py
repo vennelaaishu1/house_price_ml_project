@@ -11,18 +11,23 @@ st.set_page_config(
     layout="centered"
 )
 
+st.title("🏠 Ames House Price Prediction")
+st.write(
+    "Predict house prices using a trained Gradient Boosting Regression model."
+)
+
 # --------------------------------------------------
-# Title
+# API URL
 # --------------------------------------------------
 
-st.title("🏠 Ames House Price Prediction")
-st.write("Predict house prices using a trained Gradient Boosting Regression model.")
+API_URL = "https://house-price-ml-project-h58v.onrender.com"
+
+# --------------------------------------------------
+# Single House Prediction
+# --------------------------------------------------
 
 st.divider()
-
-# --------------------------------------------------
-# Input Section
-# --------------------------------------------------
+st.header("🏠 Single House Prediction")
 
 st.subheader("Enter House Details")
 
@@ -94,38 +99,32 @@ with col2:
         step=1
     )
 
-# --------------------------------------------------
-# Prediction Button
-# --------------------------------------------------
-
 st.divider()
 
-if st.button("🔮 Predict House Price", use_container_width=True):
+if st.button(
+    "🔮 Predict House Price",
+    use_container_width=True
+):
 
-    # Data sent to FastAPI
     input_data = {
         "OverallQual": overall_qual,
         "GrLivArea": gr_liv_area,
         "GarageCars": garage_cars,
         "TotalBsmtSF": total_bsmt_sf,
         "FirstFlrSF": first_flr_sf,
-        "YearBuilt": year_built,
         "YearRemodAdd": year_remod,
+        "YearBuilt": year_built,
         "YrSold": year_sold
     }
 
-    # FastAPI URL
-    api_url = "https://house-price-ml-project-h58v.onrender.com/predict"
-    
     try:
 
-        # Send request to FastAPI
         response = requests.post(
-            api_url,
-            json=input_data
+            f"{API_URL}/predict",
+            json=input_data,
+            timeout=60
         )
 
-        # Check response
         if response.status_code == 200:
 
             result = response.json()
@@ -149,11 +148,152 @@ if st.button("🔮 Predict House Price", use_container_width=True):
     except requests.exceptions.ConnectionError:
 
         st.error(
-            "❌ Could not connect to FastAPI.\n\n"
-            "Make sure the FastAPI server is running on "
-            "http://127.0.0.1:8000"
+            "❌ Could not connect to FastAPI."
+        )
+
+    except requests.exceptions.Timeout:
+
+        st.error(
+            "⏳ Request timed out. Please try again."
         )
 
     except Exception as e:
 
-        st.error(f"Unexpected error: {e}")
+        st.error(
+            f"Unexpected error: {e}"
+        )
+
+
+# --------------------------------------------------
+# Batch Prediction
+# --------------------------------------------------
+
+st.divider()
+st.header("📂 Batch House Price Prediction")
+
+st.write(
+    "Upload a CSV file containing multiple houses. "
+    "The API will generate predictions for all rows."
+)
+
+uploaded_file = st.file_uploader(
+    "Upload CSV file",
+    type=["csv"]
+)
+
+if uploaded_file is not None:
+
+    st.success(
+        f"File uploaded: {uploaded_file.name}"
+    )
+
+    if st.button(
+        "🚀 Predict All Houses",
+        use_container_width=True
+    ):
+
+        with st.spinner(
+            "Generating predictions for all houses..."
+        ):
+
+            try:
+
+                file_bytes = uploaded_file.getvalue()
+
+                files = {
+                    "file": (
+                        uploaded_file.name,
+                        file_bytes,
+                        "text/csv"
+                    )
+                }
+
+                response = requests.post(
+                    f"{API_URL}/predict-batch",
+                    files=files,
+                    timeout=120
+                )
+
+                if response.status_code == 200:
+
+                    st.success(
+                        "✅ Predictions generated successfully!"
+                    )
+
+                    # Download button
+                    st.download_button(
+                        label="⬇️ Download predictions.csv",
+                        data=response.content,
+                        file_name="predictions.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+
+                    # Show preview
+                    try:
+
+                        import pandas as pd
+                        import io
+
+                        prediction_df = pd.read_csv(
+                            io.BytesIO(response.content)
+                        )
+
+                        st.subheader(
+                            "📊 Prediction Preview"
+                        )
+
+                        st.dataframe(
+                            prediction_df.head(10),
+                            use_container_width=True
+                        )
+
+                        st.write(
+                            f"Total predictions: "
+                            f"**{len(prediction_df)}**"
+                        )
+
+                    except Exception as e:
+
+                        st.warning(
+                            f"Could not display preview: {e}"
+                        )
+
+                else:
+
+                    st.error(
+                        f"Batch API Error: "
+                        f"{response.status_code}\n\n"
+                        f"{response.text}"
+                    )
+
+            except requests.exceptions.ConnectionError:
+
+                st.error(
+                    "❌ Could not connect to FastAPI."
+                )
+
+            except requests.exceptions.Timeout:
+
+                st.error(
+                    "⏳ Batch prediction timed out. "
+                    "Please try again."
+                )
+
+            except Exception as e:
+
+                st.error(
+                    f"Unexpected error: {e}"
+                )
+
+
+# --------------------------------------------------
+# Footer
+# --------------------------------------------------
+
+st.divider()
+
+st.caption(
+    "Ames House Price Prediction | "
+    "Gradient Boosting Regression"
+)

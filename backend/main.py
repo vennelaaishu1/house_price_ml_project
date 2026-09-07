@@ -1,8 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel
 import joblib
 import pandas as pd
 import os
+import io
+from fastapi.responses import StreamingResponse
 
 
 # =========================================================
@@ -216,3 +218,70 @@ def predict_price(house: HouseData):
             2
         )
     }
+
+
+@app.post("/predict-batch")
+async def predict_batch(file: UploadFile = File(...)):
+
+    # Read uploaded CSV
+    contents = await file.read()
+
+    test_data = pd.read_csv(io.BytesIO(contents))
+
+    # Keep Id separately
+    ids = test_data["Id"]
+
+    # Remove Id
+    input_data = test_data.drop(columns=["Id"]).copy()
+
+    # Feature Engineering
+    input_data["TotalSF"] = (
+        input_data["TotalBsmtSF"].fillna(0)
+        + input_data["1stFlrSF"].fillna(0)
+        + input_data["2ndFlrSF"].fillna(0)
+    )
+
+    input_data["TotalBathrooms"] = (
+        input_data["FullBath"].fillna(0)
+        + 0.5 * input_data["HalfBath"].fillna(0)
+        + input_data["BsmtFullBath"].fillna(0)
+        + 0.5 * input_data["BsmtHalfBath"].fillna(0)
+    )
+
+    input_data["TotalPorchSF"] = (
+        input_data["OpenPorchSF"].fillna(0)
+        + input_data["3SsnPorch"].fillna(0)
+        + input_data["EnclosedPorch"].fillna(0)
+        + input_data["ScreenPorch"].fillna(0)
+        + input_data["WoodDeckSF"].fillna(0)
+    )
+
+    input_data["HouseAge"] = (
+        input_data["YrSold"] - input_data["YearBuilt"]
+    )
+
+    input_data["YearsSinceRemodel"] = (
+        input_data["YrSold"] - input_data["YearRemodAdd"]
+    )
+
+    # Make predictions
+    predictions = model.predict(input_data)
+
+    # Create output DataFrame
+    result = pd.DataFrame({
+        "Id": ids,
+        "SalePrice": predictions
+    })
+
+    # Convert to CSV
+    output = io.StringIO()
+    result.to_csv(output, index=False)
+    output.seek(0)
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=predictions.csv"
+        }
+    )
